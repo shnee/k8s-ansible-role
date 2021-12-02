@@ -1,0 +1,4 @@
+---
+- src: git+https://git.shnee.net/shnee/docker-ansible.git
+  name: install_docker
+  version: master

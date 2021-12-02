@@ -1,0 +1,193 @@
+---
+# https://kubernetes.io/docs/setup/production-environment/container-runtimes/#docker
+- name: Install docker daemon config.
+  template:
+    src: docker-daemon-config.json
+    dest: /etc/docker/daemon.json
+    mode: 0644
+  become: true
+  register: docker_daemon_config
+  # TODO REM remove if not needed, also remove the handler.
+  # notify: Restart docker
+
+- name: Restart docker service if needed.
+  systemd:
+    state: restarted
+    name: docker
+    daemon_reload: true
+    enabled: true
+  become: true
+  when: docker_daemon_config.changed
+
+- name: Install kubectl dependencies.
+  package:
+    name:
+      - apt-transport-https
+      - ca-certificates
+      - curl
+    state: present
+  become: true
+  when: ansible_os_family == "Debian"
+- name: Add GPG key to apt for Ubuntu.
+  apt_key:
+    url: https://packages.cloud.google.com/apt/doc/apt-key.gpg
+    id: 59FE0256827269DC81578F928B57C5C2836F4BEB
+    state: present
+  become: true
+- name: Add k8s repository for Debian-like distro.
+  apt_repository:
+    repo: "deb https://apt.kubernetes.io/ kubernetes-xenial main"
+    state: present
+    update_cache: true
+  become: true
+- name: Add k8s apt preferences file to pin a version.
+  template:
+    src: apt-preferences-k8s.j2
+    dest: /etc/apt/preferences.d/kubernetes
+    mode: 0644
+  become: true
+  when: ansible_os_family == "Debian"
+- name: Install kubectl.
+  package:
+    name:
+      - kubectl
+      - kubeadm
+      - kubelet
+    state: present
+  become: true
+  when: ansible_os_family == "Debian"
+
+################################################################################
+# sysctl stuff
+# https://kubernetes.io/docs/setup/production-environment/tools/kubeadm/install-kubeadm/#letting-iptables-see-bridged-traffic
+################################################################################
+
+- name: Force kernel modules to load.
+  copy:
+    dest: /etc/modules-load.d/k8s.conf
+    content: br_netfilter
+    mode: 0644
+  become: true
+
+- name: Let iptables see bridged traffic.
+  sysctl:
+    name: "{{ item }}"
+    value: '1'
+    state: present
+  become: true
+  loop:
+    - net.bridge.bridge-nf-call-iptables
+    - net.bridge.bridge-nf-call-ip6tables
+  when: ansible_os_family == "Debian"
+
+################################################################################
+
+- name: Ensure kubelet is started and enabled at boot.
+  service:
+    name: kubelet
+    state: started
+    enabled: true
+  become: true
+
+################################################################################
+
+- name: Get swap status.
+  command: swapon -s
+  changed_when: false
+  register: swap_status
+- name: Disable swap if needed.
+  command: swapoff -a
+  become: true
+  changed_when: true
+  when: swap_status.stdout | length > 0
+- name: comment out swap in fstab.
+  replace:
+    path: /etc/fstab
+    regexp: '^([^#].*swap.*)$'
+    replace: '# \1'
+  become: true
+
+################################################################################
+# master
+################################################################################
+
+- name: Initialize Kubernetes master with kubeadm init
+  command:
+    cmd: kubeadm init --pod-network-cidr=10.10.0.0/16
+    creates: /etc/kubernetes/admin.conf
+  become: true
+  # TODO REM do we need this register?
+  register: kubeadmin_init
+  ignore_errors: true
+  when: kubernetes_role == 'master'
+
+- name: Debug kubectl init.
+  debug:
+    var: kubeadmin_init
+  when: kubernetes_role == 'master'
+
+# TODO REM find a way to copy this file to local machine.
+- name: Ensure .kube directory exists.
+  file:
+    path: ~/.kube
+    state: directory
+    mode: 0700
+  when: kubernetes_role == 'master'
+
+- name: Copy the kubectl admin.conf to ~/.kube/conf.
+  copy:
+    src: /etc/kubernetes/admin.conf
+    remote_src: true
+    dest: "/home/{{ ansible_user }}/.kube/config"
+    mode: 0600
+    owner: "{{ ansible_user }}"
+  become: true
+  when: kubernetes_role == 'master'
+
+################################################################################
+# Join nodes to cluster.
+################################################################################
+
+- name: Get the kubeadm join command from the Kubernetes master.
+  command: kubeadm token create --print-join-command
+  changed_when: false
+  when: kubernetes_role == 'master'
+  register: kubernetes_join_command_result
+
+- name: debug
+  debug:
+    var: kubernetes_join_command_result
+
+# This is not how we want to do this just grab the join command from a mater no
+# need to set a fact.
+- name: Set the kubeadm join command globally.
+  set_fact:
+    kubernetes_join_command: "{{ kubernetes_join_command_result.stdout }}"
+  when: kubernetes_join_command_result.stdout is defined
+  delegate_to: "{{ item }}"
+  delegate_facts: true
+  with_items: "{{ groups['all'] }}"
+
+- name: Join node to cluster.
+  command:
+    cmd: "{{ kubernetes_join_command }}"
+    creates: /etc/kubernetes/kubelet.conf
+  become: true
+  when: kubernetes_role == 'worker'
+
+################################################################################
+# calico
+################################################################################
+
+- name: Check if calico is already deployed by getting all pods.
+  command: kubectl get pods --all-namespaces
+  ignore_errors: true
+  changed_when: false
+  register: pods
+  when: kubernetes_role == 'master'
+
+- name: Deploy Calico if not already installed.
+  command: kubectl apply -f https://docs.projectcalico.org/manifests/calico.yaml
+  register: calico_result
+  changed_when: "'created' in calico_result.stdout"
+  when: kubernetes_role == 'master' and 'calico' not in pods.stdout

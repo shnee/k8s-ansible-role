@@ -1,23 +1,10 @@
 ---
-# https://kubernetes.io/docs/setup/production-environment/container-runtimes/#docker
-- name: Install docker daemon config.
-  template:
-    src: docker-daemon-config.json
-    dest: /etc/docker/daemon.json
-    mode: 0644
-  become: true
-  register: docker_daemon_config
-  # TODO REM remove if not needed, also remove the handler.
-  # notify: Restart docker
+# Configure docker for k8s.
+- include_tasks: configure_docker.yml
 
-- name: Restart docker service if needed.
-  systemd:
-    state: restarted
-    name: docker
-    daemon_reload: true
-    enabled: true
-  become: true
-  when: docker_daemon_config.changed
+################################################################################
+# Install kublet, kudeadm, and kubectl
+################################################################################
 
 - name: Install kubectl dependencies.
   package:
@@ -28,18 +15,23 @@
     state: present
   become: true
   when: ansible_os_family == "Debian"
+
 - name: Add GPG key to apt for Ubuntu.
   apt_key:
-    url: https://packages.cloud.google.com/apt/doc/apt-key.gpg
-    id: 59FE0256827269DC81578F928B57C5C2836F4BEB
+    url: "{{ apt_gpg_key_url }}"
+    id: "{{ apt_gpg_key_fingerprint }}"
     state: present
   become: true
+  when: ansible_os_family == "Debian"
+
 - name: Add k8s repository for Debian-like distro.
   apt_repository:
-    repo: "deb https://apt.kubernetes.io/ kubernetes-xenial main"
+    repo: "{{ apt_repo }}"
     state: present
     update_cache: true
   become: true
+  when: ansible_os_family == "Debian"
+
 - name: Add k8s apt preferences file to pin a version.
   template:
     src: apt-preferences-k8s.j2
@@ -47,6 +39,7 @@
     mode: 0644
   become: true
   when: ansible_os_family == "Debian"
+
 - name: Install kubectl.
   package:
     name:
@@ -56,6 +49,50 @@
     state: present
   become: true
   when: ansible_os_family == "Debian"
+
+- name: Add k8s repo for RedHat-like distro.
+  yum_repository:
+    name: kubernetes
+    description: kubernetes
+    baseurl: "{{ rh_yum_base_url }}"
+    enabled: true
+    gpgcheck: true
+    repo_gpgcheck: true
+    gpgkey: "{{ rh_yum_gpg_key }}"
+    exclude: kubelet kudeadm kubectl
+  become: true
+  register: yum_repo
+  when: ansible_os_family == 'RedHat'
+
+- name: debug
+  debug:
+    var: kubernetes_role
+
+- name: Set SELinux to permissive mode.
+  selinux:
+    policy: targeted
+    state: permissive
+  become: true
+  when: ansible_os_family == 'RedHat'
+
+- name: Update SELinux config to set it to permissive mode at boot.
+  replace:
+    path: /etc/selinux/config
+    regexp: '^SELINUX=enforcing$'
+    replace: 'SELINUX=permissive'
+  become: true
+  when: ansible_os_family == 'RedHat'
+
+- name: Install kubelet, kubectl, and kubeadm.
+  yum:
+    name:
+      - kubelet
+      - kubectl
+      - kubeadm
+    state: present
+    disable_excludes: kubernetes
+  become: true
+  when: ansible_os_family == 'RedHat'
 
 ################################################################################
 # sysctl stuff
@@ -78,7 +115,6 @@
   loop:
     - net.bridge.bridge-nf-call-iptables
     - net.bridge.bridge-nf-call-ip6tables
-  when: ansible_os_family == "Debian"
 
 ################################################################################
 
@@ -91,8 +127,16 @@
 
 ################################################################################
 
+# STARTHERE This command is failing on centos7 machine even though the command
+# works manually.
+#- name: Get swap status w/ shell.
+#  shell: swapon -s
 - name: Get swap status.
   command: swapon -s
+  # It's unclear why you need to be root for this commend. This command works
+  # fine manually as the admin user, but the only way I could get this script to
+  # work was to become root.
+  become: true
   changed_when: false
   register: swap_status
 - name: Disable swap if needed.
@@ -111,9 +155,34 @@
 # master
 ################################################################################
 
+- name: Check the docker images currently on machine.
+  command: docker images
+  # We do this as root because the docker admin will not be able to until we
+  # reset the connection. We could just as well do a reset here.
+  become: true
+  register: docker_images
+  changed_when: false
+
+# TODO REM make these images full paths. and vars
+# TODO REM check nodes id they hae these images also.
+- name: Pre-grab the container images for the static pods.
+  command: kubeadm config images pull
+  # We do this as root because the docker admin will not be able to until we
+  # reset the connection. We could just as well do a reset here.
+  become: true
+  changed_when: true
+  when: >
+    ( 'kube-apiserver' not in docker_images.stdout or
+      'kube-controller-manager' not in docker_images.stdout or
+      'kube-scheduler' not in docker_images.stdout or
+      'kube-proxy' not in docker_images.stdout or
+      'etcd' not in docker_images.stdout or
+      'coredns' not in docker_images.stdout or
+      'pause' not in docker_images.stdout )
+
 - name: Initialize Kubernetes master with kubeadm init
   command:
-    cmd: kubeadm init --pod-network-cidr=10.10.0.0/16
+    cmd: "{{ kubeadm_init_command }}"
     creates: /etc/kubernetes/admin.conf
   become: true
   # TODO REM do we need this register?
@@ -148,46 +217,51 @@
 # Join nodes to cluster.
 ################################################################################
 
+- name: Print the role.
+  debug:
+    var: kubernetes_role
 - name: Get the kubeadm join command from the Kubernetes master.
   command: kubeadm token create --print-join-command
   changed_when: false
   when: kubernetes_role == 'master'
   register: kubernetes_join_command_result
 
+# TODO REM remove this
 - name: debug
   debug:
     var: kubernetes_join_command_result
 
+# STARTHERE try to open firewall stuff on centos 7.
 # This is not how we want to do this just grab the join command from a mater no
 # need to set a fact.
-- name: Set the kubeadm join command globally.
-  set_fact:
-    kubernetes_join_command: "{{ kubernetes_join_command_result.stdout }}"
-  when: kubernetes_join_command_result.stdout is defined
-  delegate_to: "{{ item }}"
-  delegate_facts: true
-  with_items: "{{ groups['all'] }}"
-
-- name: Join node to cluster.
-  command:
-    cmd: "{{ kubernetes_join_command }}"
-    creates: /etc/kubernetes/kubelet.conf
-  become: true
-  when: kubernetes_role == 'worker'
-
-################################################################################
-# calico
-################################################################################
-
-- name: Check if calico is already deployed by getting all pods.
-  command: kubectl get pods --all-namespaces
-  ignore_errors: true
-  changed_when: false
-  register: pods
-  when: kubernetes_role == 'master'
-
-- name: Deploy Calico if not already installed.
-  command: kubectl apply -f https://docs.projectcalico.org/manifests/calico.yaml
-  register: calico_result
-  changed_when: "'created' in calico_result.stdout"
-  when: kubernetes_role == 'master' and 'calico' not in pods.stdout
+#- name: Set the kubeadm join command globally.
+#  set_fact:
+#    kubernetes_join_command: "{{ kubernetes_join_command_result.stdout }}"
+#  when: kubernetes_join_command_result.stdout is defined
+#  delegate_to: "{{ item }}"
+#  delegate_facts: true
+#  with_items: "{{ groups['all'] }}"
+#
+#- name: Join node to cluster.
+#  command:
+#    cmd: "{{ kubernetes_join_command }}"
+#    creates: /etc/kubernetes/kubelet.conf
+#  become: true
+#  when: kubernetes_role == 'worker'
+#
+#################################################################################
+## calico
+#################################################################################
+#
+#- name: Check if calico is already deployed by getting all pods.
+#  command: kubectl get pods --all-namespaces
+#  ignore_errors: true
+#  changed_when: false
+#  register: pods
+#  when: kubernetes_role == 'master'
+#
+#- name: Deploy Calico if not already installed.
+#  command: "kubectl apply -f {{ calico_manifest_url }}"
+#  register: calico_result
+#  changed_when: "'created' in calico_result.stdout"
+#  when: kubernetes_role == 'master' and 'calico' not in pods.stdout

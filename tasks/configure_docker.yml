@@ -1,0 +1,22 @@
+---
+# https://kubernetes.io/docs/setup/production-environment/container-runtimes/#docker
+- name: Install docker daemon config.
+  template:
+    src: docker-daemon-config.json
+    dest: /etc/docker/daemon.json
+    mode: 0644
+  become: true
+  register: docker_daemon_config
+
+- name: Restart docker service if needed.
+  systemd:
+    state: restarted
+    name: docker
+    daemon_reload: true
+    enabled: true
+  become: true
+  when: docker_daemon_config.changed
+  # ansible-lint complains that this task should be a handler but we need this
+  # daemon_reload and service restarted before kublet is installed, other wise
+  # the kibelet service has issues.
+  tags: ['skip_ansible_lint']

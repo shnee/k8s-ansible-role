@@ -1,2 +1,17 @@
 ---
 k8s_version: "1.22"
+
+pod_network_cidr: "10.10.0.0/16"
+kubeadm_init_command: "kubeadm init --pod-network-cidr={{ pod_network_cidr }}"
+
+apt_gpg_key_url: "https://packages.cloud.google.com/apt/doc/apt-key.gpg"
+apt_gpg_key_fingerprint: "59FE0256827269DC81578F928B57C5C2836F4BEB"
+apt_repo: "deb https://apt.kubernetes.io/ kubernetes-xenial main"
+
+rh_yum_base_url: "https://packages.cloud.google.com/\
+                  yum/repos/kubernetes-el7-$basearch"
+rh_yum_gpg_key:
+  - https://packages.cloud.google.com/yum/doc/yum-key.gpg
+  - https://packages.cloud.google.com/yum/doc/rpm-package-key.gpg
+
+calico_manifest_url: "https://docs.projectcalico.org/manifests/calico.yaml"

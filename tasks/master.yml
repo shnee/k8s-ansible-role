@@ -1,0 +1,33 @@
+---
+# Steps for the master node.
+
+# https://kubernetes.io/docs/setup/production-environment/tools/kubeadm/create-cluster-kubeadm/#initializing-your-control-plane-node
+- name: Initialize Kubernetes master with kubeadm init.
+  command:
+    cmd: "{{ kubeadm_init_command }}"
+    creates: /etc/kubernetes/admin.conf
+  become: true
+
+# https://kubernetes.io/docs/setup/production-environment/tools/kubeadm/create-cluster-kubeadm/#more-information
+- name: Ensure .kube directory exists.
+  file:
+    path: ~/.kube
+    state: directory
+    mode: 0700
+
+- name: Copy the kubectl admin.conf to ~/.kube/conf.
+  copy:
+    src: /etc/kubernetes/admin.conf
+    remote_src: true
+    dest: "/home/{{ ansible_user }}/.kube/config"
+    mode: 0600
+    owner: "{{ ansible_user }}"
+  become: true
+
+- name: Copy the kubectl config to this local machine.
+  fetch:
+    src: "/home/{{ ansible_user }}/.kube/config"
+    dest: ./kube_config
+    flat: true
+  changed_when: false
+  when: copy_kubectl_config_to_local

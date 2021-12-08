@@ -1,0 +1,27 @@
+---
+################################################################################
+# Disable swap
+# https://kubernetes.io/docs/setup/production-environment/tools/kubeadm/install-kubeadm/#before-you-begin
+################################################################################
+
+- name: Get swap status.
+  command: swapon -s
+  # It's unclear why you need to be root for this commend. This command works
+  # fine manually as the admin user, but the only way I could get this role to
+  # work was to become root.
+  become: true
+  changed_when: false
+  register: swap_status
+
+- name: Disable swap if needed.
+  command: swapoff -a
+  become: true
+  changed_when: true
+  when: swap_status.stdout | length > 0
+
+- name: comment out swap in fstab.
+  replace:
+    path: /etc/fstab
+    regexp: '^([^#].*swap.*)$'
+    replace: '# \1'
+  become: true

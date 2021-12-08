@@ -1,0 +1,18 @@
+---
+################################################################################
+# calico
+# https://projectcalico.docs.tigera.io/getting-started/kubernetes/self-managed-onprem/onpremises
+# https://kubernetes.io/docs/setup/production-environment/tools/kubeadm/create-cluster-kubeadm/#pod-network
+################################################################################
+
+- name: Check if calico is already deployed by getting all pods.
+  command: kubectl get pods --all-namespaces
+  ignore_errors: true
+  changed_when: false
+  register: pods
+
+- name: Deploy Calico if not already installed.
+  command: "kubectl apply -f {{ calico_manifest_url }}"
+  register: calico_result
+  changed_when: "'created' in calico_result.stdout"
+  when: "'calico' not in pods.stdout"

@@ -1,11 +1,17 @@
 ---
 k8s_version: "1.22"
+k8s_rhel_version: "1.22.4"
 
 pod_network_cidr: "10.10.0.0/16"
 kubeadm_init_command: "kubeadm init --pod-network-cidr={{ pod_network_cidr }}"
 
+# This flag controls whether or not the kubectl config file is copied from a
+# master node to the local machine running the ansible playbook.
+copy_kubectl_config_to_local: false
+
 apt_gpg_key_url: "https://packages.cloud.google.com/apt/doc/apt-key.gpg"
 apt_gpg_key_fingerprint: "59FE0256827269DC81578F928B57C5C2836F4BEB"
+# This Ubuntu URL should also work for Debian.
 apt_repo: "deb https://apt.kubernetes.io/ kubernetes-xenial main"
 
 rh_yum_base_url: "https://packages.cloud.google.com/\
@@ -15,3 +21,12 @@ rh_yum_gpg_key:
   - https://packages.cloud.google.com/yum/doc/rpm-package-key.gpg
 
 calico_manifest_url: "https://docs.projectcalico.org/manifests/calico.yaml"
+
+# k8s static pods
+kube_apiserver: 'k8s.gcr.io/kube-apiserver'
+kube_controller_manager: 'k8s.gcr.io/kube-controller-manager'
+kube_scheduler: 'k8s.gcr.io/kube-scheduler'
+kube_proxy: 'k8s.gcr.io/kube-proxy'
+etcd: 'k8s.gcr.io/etcd'
+coredns: 'k8s.gcr.io/coredns'
+pause: 'k8s.gcr.io/pause'

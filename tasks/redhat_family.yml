@@ -1,0 +1,40 @@
+---
+################################################################################
+# Install kublet, kudeadm, and kubectl
+# https://kubernetes.io/docs/setup/production-environment/tools/kubeadm/install-kubeadm/#installing-kubeadm-kubelet-and-kubectl
+################################################################################
+
+- name: Add k8s repo for RedHat-like distro.
+  yum_repository:
+    name: kubernetes
+    description: kubernetes
+    baseurl: "{{ rh_yum_base_url }}"
+    enabled: true
+    gpgcheck: true
+    repo_gpgcheck: true
+    gpgkey: "{{ rh_yum_gpg_key }}"
+    exclude: kubelet kudeadm kubectl
+  become: true
+
+- name: Set SELinux to permissive mode.
+  selinux:
+    policy: targeted
+    state: permissive
+  become: true
+
+- name: Update SELinux config to set it to permissive mode at boot.
+  replace:
+    path: /etc/selinux/config
+    regexp: '^SELINUX=enforcing$'
+    replace: 'SELINUX=permissive'
+  become: true
+
+- name: Install kubelet, kubectl, and kubeadm.
+  yum:
+    name:
+      - kubelet-{{ k8s_rhel_version }}-0
+      - kubectl-{{ k8s_rhel_version }}-0
+      - kubeadm-{{ k8s_rhel_version }}-0
+    state: present
+    disable_excludes: kubernetes
+  become: true

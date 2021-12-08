@@ -1,5 +1,9 @@
 ---
+################################################################################
+# Congifure docker for k8s.
 # https://kubernetes.io/docs/setup/production-environment/container-runtimes/#docker
+################################################################################
+
 - name: Install docker daemon config.
   template:
     src: docker-daemon-config.json
@@ -17,6 +21,6 @@
   become: true
   when: docker_daemon_config.changed
   # ansible-lint complains that this task should be a handler but we need this
-  # daemon_reload and service restarted before kublet is installed, other wise
+  # daemon_reload and service restarted before kublet is installed, otherwise
   # the kibelet service has issues.
   tags: ['skip_ansible_lint']

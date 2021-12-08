@@ -1,0 +1,26 @@
+---
+################################################################################
+# Join nodes to cluster.
+# https://kubernetes.io/docs/setup/production-environment/tools/kubeadm/create-cluster-kubeadm/#join-nodes 
+################################################################################
+
+- name: Get the kubeadm join command from the Kubernetes master.
+  command: kubeadm token create --print-join-command
+  changed_when: false
+  when: kubernetes_role == 'master'
+  register: kubernetes_join_command_result
+
+- name: Set the kubeadm join command globally.
+  set_fact:
+    kubernetes_join_command: "{{ kubernetes_join_command_result.stdout }}"
+  when: kubernetes_join_command_result.stdout is defined
+  delegate_to: "{{ item }}"
+  delegate_facts: true
+  with_items: "{{ groups['all'] }}"
+
+- name: Join node to cluster.
+  command:
+    cmd: "{{ kubernetes_join_command }}"
+    creates: /etc/kubernetes/kubelet.conf
+  become: true
+  when: kubernetes_role == 'worker'

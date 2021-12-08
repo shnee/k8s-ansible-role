@@ -1,0 +1,44 @@
+---
+################################################################################
+# Install kublet, kudeadm, and kubectl
+# https://kubernetes.io/docs/setup/production-environment/tools/kubeadm/install-kubeadm/#installing-kubeadm-kubelet-and-kubectl
+################################################################################
+
+- name: Install kubectl dependencies for Debian-like distros.
+  package:
+    name:
+      - apt-transport-https
+      - ca-certificates
+      - curl
+    state: present
+  become: true
+
+- name: Add GPG key to apt for Debian-like distro.
+  apt_key:
+    url: "{{ apt_gpg_key_url }}"
+    id: "{{ apt_gpg_key_fingerprint }}"
+    state: present
+  become: true
+
+- name: Add k8s repository for Debian-like distro.
+  apt_repository:
+    repo: "{{ apt_repo }}"
+    state: present
+    update_cache: true
+  become: true
+
+- name: Add k8s apt preferences file to pin a version.
+  template:
+    src: apt-preferences-k8s.j2
+    dest: /etc/apt/preferences.d/kubernetes
+    mode: 0644
+  become: true
+
+- name: Install kubectl Debian-like distro.
+  package:
+    name:
+      - kubectl
+      - kubeadm
+      - kubelet
+    state: present
+  become: true

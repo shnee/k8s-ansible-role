@@ -1,0 +1,25 @@
+---
+dependencies:
+  - install_docker
+
+galaxy_info:
+  author: shnee
+  description: Install kubernetes.
+
+  license: MIT
+
+  min_ansible_version: 2.1
+
+  platforms:
+    - name: EL
+      versions:
+        - 7
+        - 8
+    - name: Ubuntu
+      versions:
+        - focal  # 20.04
+
+  galaxy_tags:
+    - containers
+    - kubernetes
+    - orchestration

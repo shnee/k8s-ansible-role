@@ -1,38 +1,75 @@
-Role Name
-=========
+Ansible Role: Install Kubernetes
+================================================================================
 
-A brief description of the role goes here.
+An Ansible role that installs Kubernetes.
 
-Requirements
-------------
-
-Any pre-requisites that may not be covered by Ansible itself or the role should be mentioned here. For instance, if the role uses the EC2 module, it may be a good idea to mention in this section that the boto package is required.
+This role has been tested on:
+- CentOS 7 & 8
+- Ubuntu 20.04
 
 Role Variables
---------------
+----------------------------------------
 
-A description of the settable variables for this role should go here, including any variables that are in defaults/main.yml, vars/main.yml, and any variables that can/should be set via parameters to the role. Any variables that are read from other roles and/or the global scope (ie. hostvars, group vars, etc.) should be mentioned here as well.
+The users that will be added to the `docker` group.
+This role will also install Docker via the 'install\_docker` role. The
+`install\_docker` role accepts a `docker\_users` variable. The `install\_k8s`
+role just passes through this varaible.
+```yml
+docker_users: [admin docker_admin]
+```
+
+The kubelet config is automatically added to `~/.kube/config` of `ansible\_user`
+(the user used to run Ansible). Additionally you can set
+`copy\_kubectl\_config\_to\_local` to have the file copied to you local machine
+running the Ansible playbook.
+```yml
+# Defaults to false.
+copy_kubectl_config_to_local: true
+```
+
+Versions of `kubelet`, `kubeadm`, and `kubectl` are pinned when installed. The
+version intalled is controlled by these variables.
+```yml
+# Used for all non-RHEL-based distros.
+k8s_version: "1.22"
+k8s_rhel_version: "1.22.4"
+```
 
 Dependencies
-------------
+----------------------------------------
 
-A list of other roles hosted on Galaxy should go here, plus any details in regards to parameters that may need to be set for other roles, or variables that are used from other roles.
+### install\_docker
+
+Use in requirements.yml
+```yml
+- src: git+https://github.com/shnee/docker-ansible-role.git                                                      │
+  name: install_docker                                                                                         │
+  version: master
+```
 
 Example Playbook
-----------------
+----------------------------------------
 
-Including an example of how to use your role (for instance, with variables passed in as parameters) is always nice for users too:
-
-    - hosts: servers
-      roles:
-         - { role: username.rolename, x: 42 }
+```yaml
+- hosts: all
+  vars:
+    # This will set the role to 'master' if the string 'master' exists in the
+    # group name. We expect each host to only be in 1 group for this role,
+    # therefore we only check the first group.
+    - kubernetes_role: >-
+        {{  'master' if 'master' in group_names[0] else 'worker' }}
+    - docker_users: [admin]
+    - copy_kubectl_config_to_local: true
+  roles:
+    - install_k8s
+```
 
 License
--------
+----------------------------------------
 
-BSD
+MIT
 
 Author Information
-------------------
+----------------------------------------
 
-An optional section for the role authors to include contact information, or a website (HTML is not allowed).
+This role was created by [shnee](github.com/shnee).

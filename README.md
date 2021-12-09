@@ -11,16 +11,16 @@ Role Variables
 ----------------------------------------
 
 The users that will be added to the `docker` group.
-This role will also install Docker via the 'install\_docker` role. The
-`install\_docker` role accepts a `docker\_users` variable. The `install\_k8s`
-role just passes through this varaible.
+This role will also install Docker via the `install_docker` role. The
+`install_docker` role accepts a `docker_users` variable. The `install_k8s` role
+just passes through this varaible.
 ```yml
 docker_users: [admin docker_admin]
 ```
 
-The kubelet config is automatically added to `~/.kube/config` of `ansible\_user`
+The kubelet config is automatically added to `~/.kube/config` of `ansible_user`
 (the user used to run Ansible). Additionally you can set
-`copy\_kubectl\_config\_to\_local` to have the file copied to you local machine
+`copy_kubectl_config_to_local` to have the file copied to you local machine
 running the Ansible playbook.
 ```yml
 # Defaults to false.
@@ -42,8 +42,8 @@ Dependencies
 
 Use in requirements.yml
 ```yml
-- src: git+https://github.com/shnee/docker-ansible-role.git                                                      │
-  name: install_docker                                                                                         │
+- src: git+https://github.com/shnee/docker-ansible-role.git
+  name: install_docker
   version: master
 ```
 
@@ -72,4 +72,4 @@ MIT
 Author Information
 ----------------------------------------
 
-This role was created by [shnee](github.com/shnee).
+This role was created by [shnee](https://github.com/shnee).
